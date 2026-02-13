@@ -29,12 +29,13 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+      - run: cp docs/app.html docs/index.html
 
       - uses: actions/configure-pages@v4
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: docs
 
       - id: deployment
         uses: actions/deploy-pages@v4
