@@ -123,9 +123,9 @@ const Foliage = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Component: Photo Ornaments (Double-Sided Polaroid) ---
-const PhotoOrnaments = ({ state, photos }: { state: 'CHAOS' | 'FORMED', photos: string[] }) => {
+const PhotoOrnaments = ({ state, photos, ornamentCount }: { state: 'CHAOS' | 'FORMED', photos: string[], ornamentCount: number }) => {
   const textures = useTexture(photos);
-  const count = CONFIG.counts.ornaments;
+  const count = ornamentCount;
   const groupRef = useRef<THREE.Group>(null);
 
   const borderGeometry = useMemo(() => new THREE.PlaneGeometry(1.2, 1.5), []);
@@ -379,7 +379,7 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Main Scene Experience ---
-const Experience = ({ sceneState, rotationSpeed, photos }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number, photos: string[] }) => {
+const Experience = ({ sceneState, rotationSpeed, photos, ornamentCount }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number, photos: string[], ornamentCount: number }) => {
   const controlsRef = useRef<any>(null);
   useFrame(() => {
     if (controlsRef.current) {
@@ -405,7 +405,7 @@ const Experience = ({ sceneState, rotationSpeed, photos }: { sceneState: 'CHAOS'
       <group position={[0, -6, 0]}>
           <Foliage state={sceneState} />
           <Suspense fallback={null}>
-            <PhotoOrnaments state={sceneState} photos={photos} />
+            <PhotoOrnaments state={sceneState} photos={photos} ornamentCount={ornamentCount} />
            <ChristmasElements state={sceneState} />
            <FairyLights state={sceneState} />
            <TopStar state={sceneState} />
@@ -729,6 +729,17 @@ export default function GrandTreeApp() {
   const [aiStatus, setAiStatus] = useState("INITIALIZING...");
   const [debugMode, setDebugMode] = useState(false);
 
+  const isIOS = useMemo(() => {
+    try {
+      const ua = navigator.userAgent || '';
+      const iosByUA = /iPad|iPhone|iPod/.test(ua);
+      const iPadOSDesktopUA = navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
+      return iosByUA || iPadOSDesktopUA;
+    } catch {
+      return false;
+    }
+  }, []);
+
   // Synchronously detect WebGL availability so we won't mount the <Canvas> and avoid Three.js throwing
   const webglAvailable = useMemo(() => {
     try {
@@ -749,6 +760,13 @@ export default function GrandTreeApp() {
   const [zoomMounted, setZoomMounted] = useState(false);
   const [permissiveOk, setPermissiveOk] = useState(false);
   const [okReadout, setOkReadout] = useState('');
+
+  const runtimePhotos = useMemo(() => {
+    if (!isIOS) return availablePhotos;
+    return availablePhotos.slice(0, Math.min(10, availablePhotos.length));
+  }, [availablePhotos, isIOS]);
+
+  const runtimeOrnamentCount = useMemo(() => (isIOS ? 120 : CONFIG.counts.ornaments), [isIOS]);
 
   // helper to show overlay with animation
   const showZoom = (idx: number) => {
@@ -813,7 +831,7 @@ export default function GrandTreeApp() {
         {webglAvailable ? (
           photosReady ? (
             <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
-                <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} photos={availablePhotos} />
+                <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} photos={runtimePhotos} ornamentCount={runtimeOrnamentCount} />
             </Canvas>
           ) : (
             <div style={{color:'#FFD700',display:'flex',alignItems:'center',justifyContent:'center',height:'100%'}}>Checking photos...</div>
@@ -822,13 +840,13 @@ export default function GrandTreeApp() {
           <NonWebGLFallback sceneState={sceneState} setSceneState={setSceneState} rotationSpeed={rotationSpeed} setRotationSpeed={setRotationSpeed} />
         )}
       </div>
-      <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} gpuAllowed={webglAvailable} enableAI={webglAvailable && !!(navigator && ((navigator as any).mediaDevices && (navigator as any).mediaDevices.getUserMedia)) && (location.protocol === 'https:' || location.hostname === 'localhost')} onPick={(i:number)=>{ showZoom(i); }} onUnpick={() => { hideZoom(); }} photosCount={availablePhotos.length} sceneState={sceneState} permissiveOk={permissiveOk} onDebug={(s:string)=>setOkReadout(s)} />
+      <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} gpuAllowed={webglAvailable} enableAI={!isIOS && webglAvailable && !!(navigator && ((navigator as any).mediaDevices && (navigator as any).mediaDevices.getUserMedia)) && (location.protocol === 'https:' || location.hostname === 'localhost')} onPick={(i:number)=>{ showZoom(i); }} onUnpick={() => { hideZoom(); }} photosCount={runtimePhotos.length} sceneState={sceneState} permissiveOk={permissiveOk} onDebug={(s:string)=>setOkReadout(s)} />
 
       {/* Zoom overlay for picked photo (from OK sign) with animation */}
-      {zoomMounted && zoomPhotoIndex !== null && availablePhotos[zoomPhotoIndex] && (
+      {zoomMounted && zoomPhotoIndex !== null && runtimePhotos[zoomPhotoIndex] && (
         <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:2000,pointerEvents: zoomVisible ? 'auto' : 'none'}}>
           <div style={{position:'relative',background:'rgba(0,0,0,0.6)',padding:20,borderRadius:12,transition:'opacity 300ms ease, transform 300ms ease',opacity: zoomVisible ? 1 : 0, transform: zoomVisible ? 'scale(1)' : 'scale(0.96)'}}>
-            <img src={availablePhotos[zoomPhotoIndex]} style={{maxWidth:'80vw',maxHeight:'80vh',display:'block',border:`8px solid ${CONFIG.colors.gold}`,borderRadius:8}} alt="picked" />
+            <img src={runtimePhotos[zoomPhotoIndex]} style={{maxWidth:'80vw',maxHeight:'80vh',display:'block',border:`8px solid ${CONFIG.colors.gold}`,borderRadius:8}} alt="picked" />
             <div style={{textAlign:'center',marginTop:12}}>
               <button onClick={() => hideZoom()} style={{padding:'8px 12px',background:'#222',color:'#FFD700',border:'1px solid #444'}}>Close</button>
             </div>
