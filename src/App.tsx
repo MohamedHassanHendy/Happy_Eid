@@ -752,7 +752,7 @@ export default function GrandTreeApp() {
     }
   }, []);
 
-  // Check which photo files actually exist on the server so missing files don't crash texture loading
+  // Fast photo startup: avoid blocking HEAD checks and limit initial texture count
   const [photosReady, setPhotosReady] = useState(false);
   const [availablePhotos, setAvailablePhotos] = useState<string[]>([]);
   const [zoomPhotoIndex, setZoomPhotoIndex] = useState<number|null>(null);
@@ -762,8 +762,8 @@ export default function GrandTreeApp() {
   const [okReadout, setOkReadout] = useState('');
 
   const runtimePhotos = useMemo(() => {
-    if (!isIOS) return availablePhotos;
-    return availablePhotos.slice(0, Math.min(10, availablePhotos.length));
+    const initialTextureCount = isIOS ? 8 : 14;
+    return availablePhotos.slice(0, Math.min(initialTextureCount, availablePhotos.length));
   }, [availablePhotos, isIOS]);
 
   const runtimeOrnamentCount = useMemo(() => (isIOS ? 120 : CONFIG.counts.ornaments), [isIOS]);
@@ -784,36 +784,8 @@ export default function GrandTreeApp() {
   };
 
   useEffect(() => {
-    let mounted = true;
-    const check = async () => {
-      const checks = await Promise.allSettled(
-        bodyPhotoPaths.map(async (path) => {
-          try {
-            const res = await fetch(path, { method: 'HEAD' });
-            return res.ok ? path : null;
-          } catch (e) {
-            return null;
-          }
-        })
-      );
-      if (!mounted) return;
-      const found = checks.map(c => (c.status === 'fulfilled' ? c.value : null)).filter(Boolean) as string[];
-      // Ensure at least one image is available; fall back to top.jpg path if present
-      if (found.length === 0) {
-        try {
-          const r = await fetch(`${BASE}photos/top.jpg`, { method: 'HEAD' });
-          if (r.ok) setAvailablePhotos([`${BASE}photos/top.jpg`]);
-          else setAvailablePhotos([]);
-        } catch (e) {
-          setAvailablePhotos([]);
-        }
-      } else {
-        setAvailablePhotos(found);
-      }
-      setPhotosReady(true);
-    };
-    check();
-    return () => { mounted = false; };
+    setAvailablePhotos(bodyPhotoPaths);
+    setPhotosReady(true);
   }, []);
 
   return (
