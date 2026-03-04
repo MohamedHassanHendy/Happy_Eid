@@ -16,6 +16,13 @@ import { MathUtils } from 'three';
 import * as random from 'maath/random';
 import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 
+declare global {
+  interface Window {
+    YT?: any;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
 // --- Photo list (only files that actually exist on disk) ---
 const BASE = import.meta.env.BASE_URL;
 const bodyPhotoPaths = [
@@ -26,29 +33,30 @@ const bodyPhotoPaths = [
 // --- 视觉配置 ---
 const CONFIG = {
   colors: {
-    emerald: '#004225', // 纯正祖母绿
+    emerald: '#006B3C', // Islamic green
     gold: '#FFD700',
     silver: '#ECEFF1',
     red: '#D32F2F',
-    green: '#2E7D32',
-    white: '#FFFFFF',   // 纯白色
+    green: '#006B3C',
+    white: '#FFFFFF',
     warmLight: '#FFD54F',
-    lights: ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'], // 彩灯
-    // 拍立得边框颜色池 (复古柔和色系)
+    lights: ['#FFD700', '#006B3C', '#FFFFFF', '#FFA500'], // Gold, green, white, orange
     borders: ['#FFFAF0', '#F0E68C', '#E6E6FA', '#FFB6C1', '#98FB98', '#87CEFA', '#FFDAB9'],
-    // 圣诞元素颜色
-    giftColors: ['#D32F2F', '#FFD700', '#1976D2', '#2E7D32'],
-    candyColors: ['#FF0000', '#FFFFFF']
+    giftColors: ['#006B3C', '#FFD700', '#FFFFFF', '#FFA500'],
+    candyColors: ['#006B3C', '#FFD700']
   },
   counts: {
-    foliage: 15000,
-    ornaments: 300,   // 拍立得照片数量
-    elements: 200,    // 圣诞元素数量
-    lights: 400       // 彩灯数量
+    foliage: 25000,
+    ornaments: 110,
+    elements: 60,
+    lights: 260
   },
-  tree: { height: 22, radius: 9 }, // 树体尺寸
+  text: { 
+    size: 14,
+    depth: 0.8,
+    spread: 0.06  // Tighter spread for clearer letterforms
+  },
   photos: {
-    // top 属性不再需要，因为已经移入 body
     body: bodyPhotoPaths
   }
 };
@@ -65,26 +73,81 @@ const FoliageMaterial = shaderMaterial(
     float t = cubicInOut(uProgress);
     vec3 finalPos = mix(position, aTargetPos + noise, t);
     vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
-    gl_PointSize = (60.0 * (1.0 + aRandom)) / -mvPosition.z;
+    gl_PointSize = (110.0 * (1.0 + aRandom)) / -mvPosition.z;
     gl_Position = projectionMatrix * mvPosition;
     vMix = t;
   }`,
   `uniform vec3 uColor; varying float vMix;
   void main() {
     float r = distance(gl_PointCoord, vec2(0.5)); if (r > 0.5) discard;
-    vec3 finalColor = mix(uColor * 0.3, uColor * 1.2, vMix);
+    vec3 finalColor = mix(uColor * 0.4, uColor * 1.6, vMix);
     gl_FragColor = vec4(finalColor, 1.0);
   }`
 );
 extend({ FoliageMaterial });
 
-// --- Helper: Tree Shape ---
-const getTreePosition = () => {
-  const h = CONFIG.tree.height; const rBase = CONFIG.tree.radius;
-  const y = (Math.random() * h) - (h / 2); const normalizedY = (y + (h/2)) / h;
-  const currentRadius = rBase * (1 - normalizedY); const theta = Math.random() * Math.PI * 2;
-  const r = Math.random() * currentRadius;
-  return [r * Math.cos(theta), y, r * Math.sin(theta)];
+// --- Helper: Text Shape for "Happy Eid" using canvas pixel sampling ---
+const textPixelPositions: [number, number][] = (() => {
+  const canvas = document.createElement('canvas');
+  const w = 800;
+  const h = 400;
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // Two lines: "Happy" on top, "Eid" on bottom
+  ctx.font = '900 195px "Trebuchet MS", Arial, sans-serif';
+  ctx.fillText('Happy', w / 2, h * 0.32);
+  ctx.font = '900 280px "Trebuchet MS", Arial, sans-serif';
+  ctx.fillText('Eid', w / 2, h * 0.79);
+  const imageData = ctx.getImageData(0, 0, w, h).data;
+  const positions: [number, number][] = [];
+  const step = 1; // sample every pixel for clarity
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const idx = (y * w + x) * 4;
+      if (imageData[idx] > 128) {
+        positions.push([x, y]);
+      }
+    }
+  }
+  return positions;
+})();
+
+// Map canvas pixel coords to 3D world coords
+const TEXT_SCALE_X = 90 / 800;  // map 800px canvas to ~90 world units wide
+const TEXT_SCALE_Y = 46 / 400;  // map 400px canvas to ~46 world units tall
+const TEXT_OFFSET_X = -45;       // center horizontally
+const TEXT_OFFSET_Y = 23;        // center vertically
+
+const getTextPosition = (): [number, number, number] => {
+  const idx = Math.floor(Math.random() * textPixelPositions.length);
+  const [px, py] = textPixelPositions[idx];
+  const x = px * TEXT_SCALE_X + TEXT_OFFSET_X;
+  const y = -py * TEXT_SCALE_Y + TEXT_OFFSET_Y; // flip Y
+  const z = (Math.random() - 0.5) * CONFIG.text.depth;
+  // Add slight spread for 3D feel
+  const spread = CONFIG.text.spread;
+  return [
+    x + (Math.random() - 0.5) * spread,
+    y + (Math.random() - 0.5) * spread,
+    z + (Math.random() - 0.5) * spread
+  ];
+};
+
+const getTreePosition = getTextPosition;
+
+const getOrnamentPosition = (): [number, number, number] => {
+  const [x, y, z] = getTextPosition();
+  const scale = 1.35;
+  const len = Math.sqrt(x * x + y * y) || 1;
+  const push = 4.2; // push ornaments outward so letters stay readable
+  const ox = (x / len) * push;
+  const oy = (y / len) * push;
+  return [x * scale + ox, y * scale + oy, z + (Math.random() - 0.5) * 6];
 };
 
 // --- Component: Foliage ---
@@ -123,7 +186,7 @@ const Foliage = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Component: Photo Ornaments (Double-Sided Polaroid) ---
-const PhotoOrnaments = ({ state, photos, ornamentCount }: { state: 'CHAOS' | 'FORMED', photos: string[], ornamentCount: number }) => {
+const PhotoOrnaments = ({ state, photos, ornamentCount, subtleMode }: { state: 'CHAOS' | 'FORMED', photos: string[], ornamentCount: number, subtleMode: boolean }) => {
   const textures = useTexture(photos);
   const count = ornamentCount;
   const groupRef = useRef<THREE.Group>(null);
@@ -134,14 +197,11 @@ const PhotoOrnaments = ({ state, photos, ornamentCount }: { state: 'CHAOS' | 'FO
   const data = useMemo(() => {
     return new Array(count).fill(0).map((_, i) => {
       const chaosPos = new THREE.Vector3((Math.random()-0.5)*70, (Math.random()-0.5)*70, (Math.random()-0.5)*70);
-      const h = CONFIG.tree.height; const y = (Math.random() * h) - (h / 2);
-      const rBase = CONFIG.tree.radius;
-      const currentRadius = (rBase * (1 - (y + (h/2)) / h)) + 0.5;
-      const theta = Math.random() * Math.PI * 2;
-      const targetPos = new THREE.Vector3(currentRadius * Math.cos(theta), y, currentRadius * Math.sin(theta));
+      const [x, y, z] = getOrnamentPosition();
+      const targetPos = new THREE.Vector3(x, y, z);
 
-      const isBig = Math.random() < 0.2;
-      const baseScale = isBig ? 2.2 : 0.8 + Math.random() * 0.6;
+      const isBig = Math.random() < (subtleMode ? 0.08 : 0.2);
+      const baseScale = isBig ? (subtleMode ? 1.4 : 2.2) : (subtleMode ? 0.55 + Math.random() * 0.35 : 0.8 + Math.random() * 0.6);
       const weight = 0.8 + Math.random() * 1.2;
       const borderColor = CONFIG.colors.borders[Math.floor(Math.random() * CONFIG.colors.borders.length)];
 
@@ -233,7 +293,7 @@ const PhotoOrnaments = ({ state, photos, ornamentCount }: { state: 'CHAOS' | 'FO
 };
 
 // --- Component: Christmas Elements ---
-const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
+const ChristmasElements = ({ state, subtleMode }: { state: 'CHAOS' | 'FORMED', subtleMode: boolean }) => {
   const count = CONFIG.counts.elements;
   const groupRef = useRef<THREE.Group>(null);
 
@@ -244,19 +304,14 @@ const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
   const data = useMemo(() => {
     return new Array(count).fill(0).map(() => {
       const chaosPos = new THREE.Vector3((Math.random()-0.5)*60, (Math.random()-0.5)*60, (Math.random()-0.5)*60);
-      const h = CONFIG.tree.height;
-      const y = (Math.random() * h) - (h / 2);
-      const rBase = CONFIG.tree.radius;
-      const currentRadius = (rBase * (1 - (y + (h/2)) / h)) * 0.95;
-      const theta = Math.random() * Math.PI * 2;
-
-      const targetPos = new THREE.Vector3(currentRadius * Math.cos(theta), y, currentRadius * Math.sin(theta));
+      const [x, y, z] = getOrnamentPosition();
+      const targetPos = new THREE.Vector3(x, y, z);
 
       const type = Math.floor(Math.random() * 3);
       let color; let scale = 1;
-      if (type === 0) { color = CONFIG.colors.giftColors[Math.floor(Math.random() * CONFIG.colors.giftColors.length)]; scale = 0.8 + Math.random() * 0.4; }
-      else if (type === 1) { color = CONFIG.colors.giftColors[Math.floor(Math.random() * CONFIG.colors.giftColors.length)]; scale = 0.6 + Math.random() * 0.4; }
-      else { color = Math.random() > 0.5 ? CONFIG.colors.red : CONFIG.colors.white; scale = 0.7 + Math.random() * 0.3; }
+      if (type === 0) { color = CONFIG.colors.giftColors[Math.floor(Math.random() * CONFIG.colors.giftColors.length)]; scale = (subtleMode ? 0.55 : 0.8) + Math.random() * (subtleMode ? 0.25 : 0.4); }
+      else if (type === 1) { color = CONFIG.colors.giftColors[Math.floor(Math.random() * CONFIG.colors.giftColors.length)]; scale = (subtleMode ? 0.45 : 0.6) + Math.random() * (subtleMode ? 0.25 : 0.4); }
+      else { color = Math.random() > 0.5 ? CONFIG.colors.red : CONFIG.colors.white; scale = (subtleMode ? 0.5 : 0.7) + Math.random() * (subtleMode ? 0.2 : 0.3); }
 
       const rotationSpeed = { x: (Math.random()-0.5)*2.0, y: (Math.random()-0.5)*2.0, z: (Math.random()-0.5)*2.0 };
       return { type, chaosPos, targetPos, color, scale, currentPos: chaosPos.clone(), chaosRotation: new THREE.Euler(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI), rotationSpeed };
@@ -288,7 +343,7 @@ const ChristmasElements = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Component: Fairy Lights ---
-const FairyLights = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
+const FairyLights = ({ state, subtleMode }: { state: 'CHAOS' | 'FORMED', subtleMode: boolean }) => {
   const count = CONFIG.counts.lights;
   const groupRef = useRef<THREE.Group>(null);
   const geometry = useMemo(() => new THREE.SphereGeometry(0.8, 8, 8), []);
@@ -296,9 +351,8 @@ const FairyLights = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
   const data = useMemo(() => {
     return new Array(count).fill(0).map(() => {
       const chaosPos = new THREE.Vector3((Math.random()-0.5)*60, (Math.random()-0.5)*60, (Math.random()-0.5)*60);
-      const h = CONFIG.tree.height; const y = (Math.random() * h) - (h / 2); const rBase = CONFIG.tree.radius;
-      const currentRadius = (rBase * (1 - (y + (h/2)) / h)) + 0.3; const theta = Math.random() * Math.PI * 2;
-      const targetPos = new THREE.Vector3(currentRadius * Math.cos(theta), y, currentRadius * Math.sin(theta));
+      const [x, y, z] = getOrnamentPosition();
+      const targetPos = new THREE.Vector3(x, y, z);
       const color = CONFIG.colors.lights[Math.floor(Math.random() * CONFIG.colors.lights.length)];
       const speed = 2 + Math.random() * 3;
       return { chaosPos, targetPos, color, speed, currentPos: chaosPos.clone(), timeOffset: Math.random() * 100 };
@@ -316,7 +370,11 @@ const FairyLights = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
       const mesh = child as THREE.Mesh;
       mesh.position.copy(objData.currentPos);
       const intensity = (Math.sin(time * objData.speed + objData.timeOffset) + 1) / 2;
-      if (mesh.material) { (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = isFormed ? 3 + intensity * 4 : 0; }
+      if (mesh.material) {
+        const base = subtleMode ? 2.0 : 3;
+        const amp = subtleMode ? 3.5 : 4.0;
+        (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = isFormed ? base + intensity * amp : 0;
+      }
     });
   });
 
@@ -370,7 +428,7 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
   });
 
   return (
-    <group ref={groupRef} position={[0, CONFIG.tree.height / 2 + 1.8, 0]}>
+    <group ref={groupRef} position={[0, 14, 0]}>
       <Float speed={2} rotationIntensity={0.2} floatIntensity={0.2}>
         <mesh geometry={starGeometry} material={goldMaterial} />
       </Float>
@@ -379,7 +437,7 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Main Scene Experience ---
-const Experience = ({ sceneState, rotationSpeed, photos, ornamentCount }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number, photos: string[], ornamentCount: number }) => {
+const Experience = ({ sceneState, rotationSpeed, photos, ornamentCount, textOnly, subtleMode }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number, photos: string[], ornamentCount: number, textOnly: boolean, subtleMode: boolean }) => {
   const controlsRef = useRef<any>(null);
   useFrame(() => {
     if (controlsRef.current) {
@@ -390,8 +448,8 @@ const Experience = ({ sceneState, rotationSpeed, photos, ornamentCount }: { scen
 
   return (
     <>
-      <PerspectiveCamera makeDefault position={[0, 8, 60]} fov={45} />
-      <OrbitControls ref={controlsRef} enablePan={false} enableZoom={true} minDistance={30} maxDistance={120} autoRotate={rotationSpeed === 0 && sceneState === 'FORMED'} autoRotateSpeed={0.3} maxPolarAngle={Math.PI / 1.7} />
+      <PerspectiveCamera makeDefault position={[0, 4, 50]} fov={45} />
+      <OrbitControls ref={controlsRef} enablePan={false} enableZoom={true} minDistance={30} maxDistance={120} autoRotate={rotationSpeed === 0 && sceneState === 'FORMED'} autoRotateSpeed={0.3} maxPolarAngle={Math.PI / 1.5} />
 
       <color attach="background" args={['#000300']} />
       <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
@@ -404,13 +462,17 @@ const Experience = ({ sceneState, rotationSpeed, photos, ornamentCount }: { scen
 
       <group position={[0, -6, 0]}>
           <Foliage state={sceneState} />
-          <Suspense fallback={null}>
-            <PhotoOrnaments state={sceneState} photos={photos} ornamentCount={ornamentCount} />
-           <ChristmasElements state={sceneState} />
-           <FairyLights state={sceneState} />
-           <TopStar state={sceneState} />
-        </Suspense>
-        <Sparkles count={600} scale={50} size={8} speed={0.4} opacity={0.4} color={CONFIG.colors.silver} />
+          {!textOnly && (
+            <Suspense fallback={null}>
+              <PhotoOrnaments state={sceneState} photos={photos} ornamentCount={ornamentCount} subtleMode={subtleMode} />
+              <ChristmasElements state={sceneState} subtleMode={subtleMode} />
+              <FairyLights state={sceneState} subtleMode={subtleMode} />
+              <TopStar state={sceneState} />
+            </Suspense>
+          )}
+        {!textOnly && (
+          <Sparkles count={subtleMode ? 220 : 600} scale={50} size={8} speed={0.4} opacity={subtleMode ? 0.25 : 0.4} color={CONFIG.colors.silver} />
+        )}
       </group>
 
       <EffectComposer>
@@ -426,7 +488,7 @@ const NonWebGLFallback = ({ sceneState, setSceneState, rotationSpeed, setRotatio
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ornamentCount = Math.min(100, CONFIG.counts.ornaments);
 
-  // simple 2D projection of tree ornaments
+  // simple 2D projection of Arabic text ornaments
   useEffect(() => {
     let raf = 0;
     const ctx = canvasRef.current?.getContext('2d');
@@ -437,42 +499,31 @@ const NonWebGLFallback = ({ sceneState, setSceneState, rotationSpeed, setRotatio
     canvasRef.current.height = height;
 
     const centerX = width / 2;
-    const centerY = height / 2 + 60;
-    const treeH = Math.min(300, height * 0.6);
-    const treeR = treeH / 2;
+    const centerY = height / 2;
+    const scale = Math.min(width, height) / 30;
 
     const ornaments = new Array(ornamentCount).fill(0).map(() => {
-      const y = Math.random() * treeH;
-      const normalizedY = y / treeH;
-      const radius = treeR * (1 - normalizedY) * (0.8 + Math.random() * 0.4);
-      const angle = Math.random() * Math.PI * 2;
-      const x = centerX + radius * Math.cos(angle);
-      const py = centerY - y;
+      const [x, y] = getTextPosition();
       const size = 6 + Math.random() * 8;
       const color = CONFIG.colors.lights[Math.floor(Math.random() * CONFIG.colors.lights.length)];
-      return { x, y: py, size, color, angle }; 
+      return { x: x * scale, y: y * scale, size, color }; 
     });
 
     const render = (t: number) => {
       ctx.clearRect(0, 0, width, height);
       // background
       ctx.fillStyle = '#000300'; ctx.fillRect(0, 0, width, height);
-      // draw tree triangle
-      ctx.fillStyle = '#004225';
-      ctx.beginPath();
-      ctx.moveTo(centerX, centerY - treeH - 20);
-      ctx.lineTo(centerX - treeR - 20, centerY + 20);
-      ctx.lineTo(centerX + treeR + 20, centerY + 20);
-      ctx.closePath(); ctx.fill();
+      
+      // draw "Happy Eid" text
+      ctx.fillStyle = '#006B3C';
+      ctx.font = `900 ${Math.floor(scale * 10)}px "Trebuchet MS", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Happy', centerX, centerY - scale * 4.2);
+      ctx.font = `900 ${Math.floor(scale * 14)}px "Trebuchet MS", Arial, sans-serif`;
+      ctx.fillText('Eid', centerX, centerY + scale * 4.6);
 
-      // draw ornaments
-      const time = t * 0.001;
-      ornaments.forEach((o) => {
-        const rot = time * (rotationSpeed || 0.2) + o.angle;
-        const ox = centerX + (o.x - centerX) * Math.cos(rot) - (o.y - centerY) * Math.sin(rot);
-        const oy = centerY + (o.x - centerX) * Math.sin(rot) + (o.y - centerY) * Math.cos(rot);
-        ctx.beginPath(); ctx.fillStyle = o.color; ctx.arc(ox, oy, o.size * (sceneState === 'FORMED' ? 1 : 0.6), 0, Math.PI * 2); ctx.fill();
-      });
+      // ornaments removed for text-only clarity
 
       raf = requestAnimationFrame(render);
     };
@@ -724,10 +775,17 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode, gpuAllowed,
 
 // --- App Entry ---
 export default function GrandTreeApp() {
+  const textOnly = false;
+  const subtleMode = true;
   const [sceneState, setSceneState] = useState<'CHAOS' | 'FORMED'>('FORMED');
   const [rotationSpeed, setRotationSpeed] = useState(0);
   const [aiStatus, setAiStatus] = useState("INITIALIZING...");
   const [debugMode, setDebugMode] = useState(false);
+  const youtubePlayerRef = useRef<any>(null);
+  const [musicReady, setMusicReady] = useState(false);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const [showMusicPlayer, setShowMusicPlayer] = useState(false);
+  const videoId = 'SKfi0V8NRhQ';
 
   const isIOS = useMemo(() => {
     try {
@@ -762,11 +820,86 @@ export default function GrandTreeApp() {
   const [okReadout, setOkReadout] = useState('');
 
   const runtimePhotos = useMemo(() => {
-    const initialTextureCount = isIOS ? 8 : 14;
+    if (textOnly) return [] as string[];
+    const initialTextureCount = subtleMode ? (isIOS ? 6 : 10) : (isIOS ? 8 : 14);
     return availablePhotos.slice(0, Math.min(initialTextureCount, availablePhotos.length));
-  }, [availablePhotos, isIOS]);
+  }, [availablePhotos, isIOS, textOnly, subtleMode]);
 
-  const runtimeOrnamentCount = useMemo(() => (isIOS ? 120 : CONFIG.counts.ornaments), [isIOS]);
+  const runtimeOrnamentCount = useMemo(() => (textOnly ? 0 : (subtleMode ? 60 : (isIOS ? 100 : CONFIG.counts.ornaments))), [isIOS, textOnly, subtleMode]);
+
+  useEffect(() => {
+    let mounted = true;
+    const ensurePlayer = () => {
+      if (!mounted || !window.YT || !window.YT.Player) return;
+      if (youtubePlayerRef.current) return;
+
+      youtubePlayerRef.current = new window.YT.Player('eid-youtube-player', {
+        height: '124',
+        width: '220',
+        videoId,
+        playerVars: {
+          autoplay: 1,
+          loop: 1,
+          playlist: videoId,
+          start: 15,
+          controls: 0,
+          modestbranding: 1,
+          rel: 0,
+          playsinline: 1
+        },
+        events: {
+          onReady: (event: any) => {
+            if (!mounted) return;
+            setMusicReady(true);
+            try {
+              event.target.playVideo();
+            } catch {
+              setMusicPlaying(false);
+            }
+          },
+          onStateChange: (event: any) => {
+            if (!mounted) return;
+            setMusicPlaying(event.data === 1);
+          },
+          onError: () => {
+            if (!mounted) return;
+            setMusicPlaying(false);
+          }
+        }
+      });
+    };
+
+    if (window.YT && window.YT.Player) {
+      ensurePlayer();
+    } else {
+      const existing = document.getElementById('youtube-iframe-api');
+      if (!existing) {
+        const script = document.createElement('script');
+        script.id = 'youtube-iframe-api';
+        script.src = 'https://www.youtube.com/iframe_api';
+        document.body.appendChild(script);
+      }
+      window.onYouTubeIframeAPIReady = ensurePlayer;
+    }
+
+    return () => {
+      mounted = false;
+      if (youtubePlayerRef.current && youtubePlayerRef.current.destroy) {
+        youtubePlayerRef.current.destroy();
+        youtubePlayerRef.current = null;
+      }
+    };
+  }, [videoId]);
+
+  const toggleMusic = () => {
+    const player = youtubePlayerRef.current;
+    if (!player || !musicReady) return;
+    if (musicPlaying) {
+      player.pauseVideo();
+    } else {
+      player.playVideo();
+    }
+  };
 
   // helper to show overlay with animation
   const showZoom = (idx: number) => {
@@ -803,7 +936,7 @@ export default function GrandTreeApp() {
         {webglAvailable ? (
           photosReady ? (
             <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
-                <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} photos={runtimePhotos} ornamentCount={runtimeOrnamentCount} />
+                <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} photos={runtimePhotos} ornamentCount={runtimeOrnamentCount} textOnly={textOnly} subtleMode={subtleMode} />
             </Canvas>
           ) : (
             <div style={{color:'#FFD700',display:'flex',alignItems:'center',justifyContent:'center',height:'100%'}}>Checking photos...</div>
@@ -812,10 +945,10 @@ export default function GrandTreeApp() {
           <NonWebGLFallback sceneState={sceneState} setSceneState={setSceneState} rotationSpeed={rotationSpeed} setRotationSpeed={setRotationSpeed} />
         )}
       </div>
-      <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} gpuAllowed={webglAvailable} enableAI={!isIOS && webglAvailable && !!(navigator && ((navigator as any).mediaDevices && (navigator as any).mediaDevices.getUserMedia)) && (location.protocol === 'https:' || location.hostname === 'localhost')} onPick={(i:number)=>{ showZoom(i); }} onUnpick={() => { hideZoom(); }} photosCount={runtimePhotos.length} sceneState={sceneState} permissiveOk={permissiveOk} onDebug={(s:string)=>setOkReadout(s)} />
+      <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} gpuAllowed={webglAvailable} enableAI={!isIOS && webglAvailable && !!(navigator && ((navigator as any).mediaDevices && (navigator as any).mediaDevices.getUserMedia)) && (location.protocol === 'https:' || location.hostname === 'localhost')} onPick={(i:number)=>{ showZoom(i); }} onUnpick={() => { hideZoom(); }} photosCount={textOnly ? 0 : runtimePhotos.length} sceneState={sceneState} permissiveOk={permissiveOk} onDebug={(s:string)=>setOkReadout(s)} />
 
       {/* Zoom overlay for picked photo (from OK sign) with animation */}
-      {zoomMounted && zoomPhotoIndex !== null && runtimePhotos[zoomPhotoIndex] && (
+      {!textOnly && zoomMounted && zoomPhotoIndex !== null && runtimePhotos[zoomPhotoIndex] && (
         <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:2000,pointerEvents: zoomVisible ? 'auto' : 'none'}}>
           <div style={{position:'relative',background:'rgba(0,0,0,0.6)',padding:20,borderRadius:12,transition:'opacity 300ms ease, transform 300ms ease',opacity: zoomVisible ? 1 : 0, transform: zoomVisible ? 'scale(1)' : 'scale(0.96)'}}>
             <img src={runtimePhotos[zoomPhotoIndex]} style={{maxWidth:'80vw',maxHeight:'80vh',display:'block',border:`8px solid ${CONFIG.colors.gold}`,borderRadius:8}} alt="picked" />
@@ -828,17 +961,24 @@ export default function GrandTreeApp() {
 
       {/* UI - Stats */}
       <div style={{ position: 'absolute', bottom: '30px', left: '40px', color: '#888', zIndex: 10, fontFamily: 'sans-serif', userSelect: 'none' }}>
-        <div style={{ marginBottom: '15px' }}>
-          <p style={{ fontSize: '10px', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>Memories</p>
-          <p style={{ fontSize: '24px', color: '#FFD700', fontWeight: 'bold', margin: 0 }}>
-            {CONFIG.counts.ornaments.toLocaleString()} <span style={{ fontSize: '10px', color: '#555', fontWeight: 'normal' }}>POLAROIDS</span>
+        <div>
+          <p style={{ fontSize: '10px', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>Text Particles</p>
+          <p style={{ fontSize: '24px', color: '#004225', fontWeight: 'bold', margin: 0 }}>
+            {(CONFIG.counts.foliage / 1000).toFixed(0)}K <span style={{ fontSize: '10px', color: '#555', fontWeight: 'normal' }}>EMERALD DOTS</span>
           </p>
         </div>
-        <div>
-          <p style={{ fontSize: '10px', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>Foliage</p>
-          <p style={{ fontSize: '24px', color: '#004225', fontWeight: 'bold', margin: 0 }}>
-            {(CONFIG.counts.foliage / 1000).toFixed(0)}K <span style={{ fontSize: '10px', color: '#555', fontWeight: 'normal' }}>EMERALD NEEDLES</span>
-          </p>
+      </div>
+
+      {/* UI - Music */}
+      <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 12, display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <button onClick={toggleMusic} style={{ padding: '10px 14px', backgroundColor: musicPlaying ? '#FFD700' : 'rgba(0,0,0,0.6)', border: '1px solid rgba(255, 215, 0, 0.6)', color: musicPlaying ? '#000' : '#FFD700', fontFamily: 'sans-serif', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' }}>
+          {musicPlaying ? 'Pause Music' : 'Play Music'}
+        </button>
+        <button onClick={() => setShowMusicPlayer(s => !s)} style={{ padding: '10px 12px', backgroundColor: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#FFD700', fontFamily: 'sans-serif', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '1px' }}>
+          {showMusicPlayer ? 'Hide' : 'Show'}
+        </button>
+        <div style={{ width: showMusicPlayer ? 220 : 0, height: showMusicPlayer ? 124 : 0, overflow: 'hidden', borderRadius: 8, border: showMusicPlayer ? '1px solid rgba(255,215,0,0.35)' : 'none', background: 'rgba(0,0,0,0.4)' }}>
+          <div id="eid-youtube-player" />
         </div>
       </div>
 
@@ -847,16 +987,18 @@ export default function GrandTreeApp() {
         <button onClick={() => setDebugMode(!debugMode)} style={{ padding: '12px 15px', backgroundColor: debugMode ? '#FFD700' : 'rgba(0,0,0,0.5)', border: '1px solid #FFD700', color: debugMode ? '#000' : '#FFD700', fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
            {debugMode ? 'HIDE DEBUG' : '🛠 DEBUG'}
         </button>
-        <button onClick={() => setPermissiveOk(p => !p)} style={{ padding: '12px 15px', backgroundColor: permissiveOk ? '#4CAF50' : 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.08)', color: permissiveOk ? '#000' : '#FFD700', fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
-           {permissiveOk ? 'Permissive OK: ON' : 'Permissive OK: OFF'}
-        </button>
+          {!textOnly && (
+           <button onClick={() => setPermissiveOk(p => !p)} style={{ padding: '12px 15px', backgroundColor: permissiveOk ? '#4CAF50' : 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.08)', color: permissiveOk ? '#000' : '#FFD700', fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
+             {permissiveOk ? 'Permissive OK: ON' : 'Permissive OK: OFF'}
+           </button>
+          )}
         <button onClick={() => setSceneState(s => s === 'CHAOS' ? 'FORMED' : 'CHAOS')} style={{ padding: '12px 30px', backgroundColor: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255, 215, 0, 0.5)', color: '#FFD700', fontFamily: 'serif', fontSize: '14px', fontWeight: 'bold', letterSpacing: '3px', textTransform: 'uppercase', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
-           {sceneState === 'CHAOS' ? 'Assemble Tree' : 'Disperse'}
+           {sceneState === 'CHAOS' ? 'Assemble' : 'Disperse'}
         </button>
       </div>
 
       {/* OK detection numeric readout (helps tuning) */}
-      {(debugMode || permissiveOk) && (
+      {!textOnly && (debugMode || permissiveOk) && (
         <div style={{ position: 'absolute', top: 48, left: '50%', transform: 'translateX(-50%)', color: '#FFD700', fontSize: '11px', zIndex: 11, background: 'rgba(0,0,0,0.45)', padding: '6px 10px', borderRadius: 6 }}>
           {okReadout || 'OK readout: —'}
         </div>

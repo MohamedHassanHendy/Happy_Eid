@@ -4,9 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Happy Eid</title>
-    <meta http-equiv="refresh" content="0; url=./docs/" />
     <script>
-      window.location.replace('./docs/');
+      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      const target = isLocal ? './app.html' : './docs/';
+      window.location.replace(target);
     </script>
   </head>
   <body>
