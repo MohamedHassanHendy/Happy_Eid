@@ -502,14 +502,7 @@ const NonWebGLFallback = ({ sceneState, setSceneState, rotationSpeed, setRotatio
     const centerY = height / 2;
     const scale = Math.min(width, height) / 30;
 
-    const ornaments = new Array(ornamentCount).fill(0).map(() => {
-      const [x, y] = getTextPosition();
-      const size = 6 + Math.random() * 8;
-      const color = CONFIG.colors.lights[Math.floor(Math.random() * CONFIG.colors.lights.length)];
-      return { x: x * scale, y: y * scale, size, color }; 
-    });
-
-    const render = (t: number) => {
+    const render = () => {
       ctx.clearRect(0, 0, width, height);
       // background
       ctx.fillStyle = '#000300'; ctx.fillRect(0, 0, width, height);
