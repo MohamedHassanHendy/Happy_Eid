@@ -486,7 +486,6 @@ const Experience = ({ sceneState, rotationSpeed, photos, ornamentCount, textOnly
 // --- Non-WebGL Fallback (2D Canvas) ---
 const NonWebGLFallback = ({ sceneState, setSceneState, rotationSpeed, setRotationSpeed }: any) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const ornamentCount = Math.min(100, CONFIG.counts.ornaments);
 
   // simple 2D projection of Arabic text ornaments
   useEffect(() => {
