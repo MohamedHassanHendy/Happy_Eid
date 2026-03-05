@@ -16,13 +16,6 @@ import { MathUtils } from 'three';
 import * as random from 'maath/random';
 import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 
-declare global {
-  interface Window {
-    YT?: any;
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
-
 // --- Photo list (only files that actually exist on disk) ---
 const BASE = import.meta.env.BASE_URL;
 const bodyPhotoPaths = [
@@ -773,11 +766,9 @@ export default function GrandTreeApp() {
   const [rotationSpeed, setRotationSpeed] = useState(0);
   const [aiStatus, setAiStatus] = useState("INITIALIZING...");
   const [debugMode, setDebugMode] = useState(false);
-  const youtubePlayerRef = useRef<any>(null);
-  const [musicReady, setMusicReady] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [musicPlaying, setMusicPlaying] = useState(false);
-  const [showMusicPlayer, setShowMusicPlayer] = useState(false);
-  const videoId = 'SKfi0V8NRhQ';
+  const audioSrc = `${BASE}audio/eid-loop.mp3`;
 
   const isIOS = useMemo(() => {
     try {
@@ -819,77 +810,13 @@ export default function GrandTreeApp() {
 
   const runtimeOrnamentCount = useMemo(() => (textOnly ? 0 : (subtleMode ? 60 : (isIOS ? 100 : CONFIG.counts.ornaments))), [isIOS, textOnly, subtleMode]);
 
-  useEffect(() => {
-    let mounted = true;
-    const ensurePlayer = () => {
-      if (!mounted || !window.YT || !window.YT.Player) return;
-      if (youtubePlayerRef.current) return;
-
-      youtubePlayerRef.current = new window.YT.Player('eid-youtube-player', {
-        height: '124',
-        width: '220',
-        videoId,
-        playerVars: {
-          autoplay: 1,
-          loop: 1,
-          playlist: videoId,
-          start: 15,
-          controls: 0,
-          modestbranding: 1,
-          rel: 0,
-          playsinline: 1
-        },
-        events: {
-          onReady: (event: any) => {
-            if (!mounted) return;
-            setMusicReady(true);
-            try {
-              event.target.playVideo();
-            } catch {
-              setMusicPlaying(false);
-            }
-          },
-          onStateChange: (event: any) => {
-            if (!mounted) return;
-            setMusicPlaying(event.data === 1);
-          },
-          onError: () => {
-            if (!mounted) return;
-            setMusicPlaying(false);
-          }
-        }
-      });
-    };
-
-    if (window.YT && window.YT.Player) {
-      ensurePlayer();
-    } else {
-      const existing = document.getElementById('youtube-iframe-api');
-      if (!existing) {
-        const script = document.createElement('script');
-        script.id = 'youtube-iframe-api';
-        script.src = 'https://www.youtube.com/iframe_api';
-        document.body.appendChild(script);
-      }
-      window.onYouTubeIframeAPIReady = ensurePlayer;
-    }
-
-    return () => {
-      mounted = false;
-      if (youtubePlayerRef.current && youtubePlayerRef.current.destroy) {
-        youtubePlayerRef.current.destroy();
-        youtubePlayerRef.current = null;
-      }
-    };
-  }, [videoId]);
-
   const toggleMusic = () => {
-    const player = youtubePlayerRef.current;
-    if (!player || !musicReady) return;
-    if (musicPlaying) {
-      player.pauseVideo();
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      audio.play().catch(() => setMusicPlaying(false));
     } else {
-      player.playVideo();
+      audio.pause();
     }
   };
 
@@ -963,15 +890,20 @@ export default function GrandTreeApp() {
 
       {/* UI - Music */}
       <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 12, display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <audio
+          ref={audioRef}
+          src={audioSrc}
+          autoPlay
+          loop
+          playsInline
+          preload="auto"
+          onPlay={() => setMusicPlaying(true)}
+          onPause={() => setMusicPlaying(false)}
+          style={{ display: 'none' }}
+        />
         <button onClick={toggleMusic} style={{ padding: '10px 14px', backgroundColor: musicPlaying ? '#FFD700' : 'rgba(0,0,0,0.6)', border: '1px solid rgba(255, 215, 0, 0.6)', color: musicPlaying ? '#000' : '#FFD700', fontFamily: 'sans-serif', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' }}>
           {musicPlaying ? 'Pause Music' : 'Play Music'}
         </button>
-        <button onClick={() => setShowMusicPlayer(s => !s)} style={{ padding: '10px 12px', backgroundColor: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#FFD700', fontFamily: 'sans-serif', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '1px' }}>
-          {showMusicPlayer ? 'Hide' : 'Show'}
-        </button>
-        <div style={{ width: showMusicPlayer ? 220 : 0, height: showMusicPlayer ? 124 : 0, overflow: 'hidden', borderRadius: 8, border: showMusicPlayer ? '1px solid rgba(255,215,0,0.35)' : 'none', background: 'rgba(0,0,0,0.4)' }}>
-          <div id="eid-youtube-player" />
-        </div>
       </div>
 
       {/* UI - Buttons */}
