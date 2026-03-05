@@ -29,7 +29,6 @@ jobs:
 
       - run: npm ci
       - run: npm run build
-      - run: cp docs/app.html docs/index.html
 
       - uses: actions/configure-pages@v4
 
