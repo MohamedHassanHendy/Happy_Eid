@@ -768,6 +768,7 @@ export default function GrandTreeApp() {
   const [debugMode, setDebugMode] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [musicPlaying, setMusicPlaying] = useState(false);
+  const [entered, setEntered] = useState(false);
   const audioSrc = `${BASE}audio/eid-loop.mp3`;
 
   const isIOS = useMemo(() => {
@@ -820,6 +821,17 @@ export default function GrandTreeApp() {
     }
   };
 
+  const handleEnter = () => {
+    setEntered(true);
+    // Start music on user gesture so browsers allow it
+    setTimeout(() => {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.play().catch(() => setMusicPlaying(false));
+      }
+    }, 100);
+  };
+
   // helper to show overlay with animation
   const showZoom = (idx: number) => {
     setZoomPhotoIndex(idx);
@@ -842,6 +854,27 @@ export default function GrandTreeApp() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
+      {/* Welcome splash – requires a click so the browser allows audio autoplay */}
+      {!entered && (
+        <div onClick={handleEnter} style={{
+          position: 'absolute', inset: 0, zIndex: 9999,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          background: 'radial-gradient(ellipse at center, #0a1a0a 0%, #000 80%)',
+          cursor: 'pointer', userSelect: 'none'
+        }}>
+          <div style={{ fontSize: '64px', marginBottom: 16 }}>🌙</div>
+          <h1 style={{ color: '#FFD700', fontFamily: 'serif', fontSize: '42px', margin: '0 0 12px', letterSpacing: '4px', textAlign: 'center' }}>
+            Happy Eid
+          </h1>
+          <p style={{ color: 'rgba(255,215,0,0.7)', fontFamily: 'sans-serif', fontSize: '16px', margin: 0, letterSpacing: '2px' }}>
+            Tap anywhere to enter
+          </p>
+          <div style={{ marginTop: 32, width: 60, height: 60, borderRadius: '50%', border: '2px solid rgba(255,215,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'pulse 2s ease-in-out infinite' }}>
+            <span style={{ color: '#FFD700', fontSize: '24px' }}>&#9654;</span>
+          </div>
+          <style>{`@keyframes pulse { 0%,100% { transform: scale(1); opacity: 0.7; } 50% { transform: scale(1.15); opacity: 1; } }`}</style>
+        </div>
+      )}
       {!webglAvailable && (
         <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:50,background:'#000'}}>
           <div style={{color:'#FFD700',textAlign:'center',maxWidth:920,padding:24,fontFamily:'sans-serif'}}>
@@ -893,7 +926,6 @@ export default function GrandTreeApp() {
         <audio
           ref={audioRef}
           src={audioSrc}
-          autoPlay
           loop
           playsInline
           preload="auto"
